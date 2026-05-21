@@ -183,10 +183,14 @@ with tab2:
         watchlist_input = st.text_area("設定要掃描的股票名單", value="AAPL, MSFT, NVDA, TSLA, 0700.HK, 0005.HK")
         tickers = [t.strip().upper() for t in watchlist_input.split(',')]
     elif universe_choice == "🇺🇸 S&P 500 最新成份股":
-        tickers = get_sp500_tickers()
+        with st.spinner('正在從 Wikipedia 抓取 S&P 500 名單...'):
+            tickers = get_sp500_tickers()
+            st.info(f"✅ 成功獲取 {len(tickers)} 隻 S&P 500 成份股！")
     elif universe_choice == "🇭🇰 恒生指數 最新成份股":
-        tickers = get_hsi_tickers()
-
+        with st.spinner('正在從 Wikipedia 抓取 恒生指數 名單...'):
+            tickers = get_hsi_tickers()
+            st.info(f"✅ 成功獲取 {len(tickers)} 隻恒生指數成份股！")
+            
     if st.button("🚀 開始全網掃描", key="scan_btn"):
         if not tickers:
             st.warning("股票名單為空！")
