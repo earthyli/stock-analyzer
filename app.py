@@ -18,14 +18,12 @@ st.title("📈 AI 智能股票技術分析工具")
 # ==========================================
 def calculate_indicators(df, short_w, long_w):
     """計算技術指標 (MA 與 RSI)"""
-    # 修正 yfinance 新版本可能帶來的 MultiIndex 欄位問題
     if df.columns.nlevels > 1:
         df.columns = df.columns.get_level_values(0)
     
     df['MA_Short'] = df['Close'].rolling(window=short_w).mean()
     df['MA_Long'] = df['Close'].rolling(window=long_w).mean()
     
-    # 計算 RSI (14日)
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -35,29 +33,25 @@ def calculate_indicators(df, short_w, long_w):
 
 @st.cache_data(ttl=86400)
 def get_sp500_tickers():
-    """自動從 Wikipedia 抓取 S&P 500 最新成份股"""
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
     response = requests.get(url, headers=headers)
     table = pd.read_html(io.StringIO(response.text))[0]
-    # 將欄位 Symbol 抽出來，並處理 Yahoo Finance 格式 (例如 BRK.B -> BRK-B)
     tickers = table['Symbol'].str.replace('.', '-', regex=False).tolist()
     return tickers
 
 @st.cache_data(ttl=86400)
 def get_hsi_tickers():
-    """自動從 Wikipedia 抓取恒生指數最新成份股"""
     url = 'https://en.wikipedia.org/wiki/Hang_Seng_Index'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
     response = requests.get(url, headers=headers)
     tables = pd.read_html(io.StringIO(response.text))
     for df in tables:
         if 'Ticker' in df.columns:
-            # 提取數字並補齊 4 位數字加上 .HK
             numbers = df['Ticker'].astype(str).str.extract(r'(\d+)')[0].dropna()
             tickers = numbers.apply(lambda x: x.zfill(4) + '.HK').tolist()
             return tickers
-    return ["0700.HK", "9988.HK", "0005.HK"] # 保底名單
+    return ["0700.HK", "9988.HK", "0005.HK"]
 
 # ==========================================
 # 側邊欄設定 (Sidebar)
@@ -79,16 +73,41 @@ with tab1:
     with col1:
         ticker = st.text_input("輸入股票代碼 (例如: AAPL, TSLA, 0700.HK)", value="AAPL").upper()
     with col2:
-        period = st.selectbox("選取時間範圍", ["3mo", "6mo", "1y", "2y", "5y"], index=2)
+        # 💡 新增 1星期 和 1個月 選項，並完全中文化選單
+        period_dict = {
+            "1 星期": "5d", 
+            "1 個月": "1mo", 
+            "3 個月": "3mo", 
+            "6 個月": "6mo", 
+            "1 年": "1y", 
+            "2 年": "2y", 
+            "5 年": "5y"
+        }
+        period_label = st.selectbox("選取時間範圍", list(period_dict.keys()), index=3) # 預設改為 6個月
+        period = period_dict[period_label]
     
     if st.button("開始分析", key="analyze_single"):
         with st.spinner('正在從 Yahoo Finance 獲取數據...'):
-            df = yf.download(ticker, period=period, progress=False)
+            # 💡 核心技術改良：強制底層最少下載 6 個月數據確保指標能被計算
+            fetch_period = period
+            if period in ["5d", "1mo", "3mo"]:
+                fetch_period = "6mo"
+                
+            df = yf.download(ticker, period=fetch_period, progress=False)
             
             if df.empty:
                 st.error("❌ 搵唔到數據，請檢查股票代碼是否正確。")
             else:
                 df = calculate_indicators(df, ma_short_window, ma_long_window)
+                
+                # 💡 視覺切割：計好晒指標之後，只保留用戶想看的時間範圍
+                if period == "5d":
+                    df = df.tail(5)    # 1 星期約 5 個交易日
+                elif period == "1mo":
+                    df = df.tail(22)   # 1 個月約 22 個交易日
+                elif period == "3mo":
+                    df = df.tail(63)   # 3 個月約 63 個交易日
+                    
                 latest = df.iloc[-1]
                 prev = df.iloc[-2]
                 
@@ -103,7 +122,6 @@ with tab1:
                     signal = "🔴 賣出訊號 (SELL) - 死亡交叉"
                     signal_color = "#dc3545"
                 
-                # 顯示當前價錢與訊號
                 st.markdown(f"### {ticker} 當前訊號: <span style='color:{signal_color}'>{signal}</span>", unsafe_allow_html=True)
                 
                 col_m1, col_m2, col_m3 = st.columns(3)
@@ -111,20 +129,17 @@ with tab1:
                 col_m2.metric("當前 RSI (14)", f"{float(latest['RSI']):.2f}")
                 col_m3.metric("短期 / 長期 MA", f"{float(latest['MA_Short']):.2f} / {float(latest['MA_Long']):.2f}")
                 
-                # 繪製 Plotly 圖表
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_width=[0.3, 0.7])
                 
-                # 上圖：收市價與 MA
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='收市價 (Close)', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f'{ma_short_window} MA', line=dict(color='#ff7f0e', width=1.5, dash='dash')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f'{ma_long_window} MA', line=dict(color='#2ca02c', width=1.5)), row=1, col=1)
                 
-                # 下圖：RSI
                 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='#9467bd', width=1.5)), row=2, col=1)
                 fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="超買 (70)", row=2, col=1)
                 fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="超賣 (30)", row=2, col=1)
                 
-                fig.update_layout(height=600, title_text=f"{ticker} 技術分析圖表", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                fig.update_layout(height=600, title_text=f"{ticker} 技術分析圖表 ({period_label})", hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
                 st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------------------
@@ -164,7 +179,6 @@ with tab2:
             for i, t in enumerate(tickers):
                 status_text.text(f"正在掃描: {t} ({i+1}/{len(tickers)})...")
                 try:
-                    # 只需要最近 6 個月數據作訊號判斷，加快速度
                     df = yf.download(t, period="6mo", progress=False)
                     
                     if not df.empty and len(df) > ma_long_window:
@@ -178,7 +192,6 @@ with tab2:
                         elif prev['MA_Short'] >= prev['MA_Long'] and latest['MA_Short'] < latest['MA_Long']:
                             signal = "🔴 賣出 (死亡交叉)"
                         
-                        # --- RSI 預警邏輯 ---
                         display_signal = signal
                         if signal == "觀望":
                             if latest['RSI'] > 70:
@@ -186,7 +199,6 @@ with tab2:
                             elif latest['RSI'] < 30:
                                 display_signal = "👀 留意 (RSI 超賣)"
                         
-                        # 篩選條件：只要 display_signal 唔係「觀望」就上榜
                         if display_signal != "觀望":
                             results.append({
                                 "股票代碼": t,
@@ -195,9 +207,8 @@ with tab2:
                                 "RSI": round(float(latest['RSI']), 2)
                             })
                 except Exception:
-                    pass # 忽略抓取失敗的股票
+                    pass
                 
-                # 更新進度條
                 progress_bar.progress((i + 1) / len(tickers))
                 
             status_text.text("✅ 掃描完成！")
