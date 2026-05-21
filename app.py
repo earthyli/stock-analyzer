@@ -38,10 +38,9 @@ def get_sp500_tickers():
     """自動從 Wikipedia 抓取 S&P 500 最新成份股"""
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-    
     response = requests.get(url, headers=headers)
-    # 修正：用 io.StringIO 將純文字包裝成 File-like object
     table = pd.read_html(io.StringIO(response.text))[0]
+    # 將欄位 Symbol 抽出來，並處理 Yahoo Finance 格式 (例如 BRK.B -> BRK-B)
     tickers = table['Symbol'].str.replace('.', '-', regex=False).tolist()
     return tickers
 
@@ -50,17 +49,15 @@ def get_hsi_tickers():
     """自動從 Wikipedia 抓取恒生指數最新成份股"""
     url = 'https://en.wikipedia.org/wiki/Hang_Seng_Index'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-    
     response = requests.get(url, headers=headers)
-    # 修正：用 io.StringIO 將純文字包裝成 File-like object
     tables = pd.read_html(io.StringIO(response.text))
-    
     for df in tables:
         if 'Ticker' in df.columns:
+            # 提取數字並補齊 4 位數字加上 .HK
             numbers = df['Ticker'].astype(str).str.extract(r'(\d+)')[0].dropna()
             tickers = numbers.apply(lambda x: x.zfill(4) + '.HK').tolist()
             return tickers
-    return ["0700.HK", "9988.HK", "0005.HK"]
+    return ["0700.HK", "9988.HK", "0005.HK"] # 保底名單
 
 # ==========================================
 # 側邊欄設定 (Sidebar)
@@ -180,22 +177,21 @@ with tab2:
                             signal = "🟢 買入 (黃金交叉)"
                         elif prev['MA_Short'] >= prev['MA_Long'] and latest['MA_Short'] < latest['MA_Long']:
                             signal = "🔴 賣出 (死亡交叉)"
-                   
-                        # --- 加入以下呢段新邏輯 ---
-                    display_signal = signal
-                    if signal == "觀望":
-                        if latest['RSI'] > 70:
-                            display_signal = "⚠️ 留意 (RSI 超買)"
-                        elif latest['RSI'] < 30:
-                            display_signal = "👀 留意 (RSI 超賣)"
-                    # -----------------------
-
-                        # 篩選條件：有交叉訊號，或 RSI 極端
-                        if signal != "觀望" or latest['RSI'] < 30 or latest['RSI'] > 70:
+                        
+                        # --- RSI 預警邏輯 ---
+                        display_signal = signal
+                        if signal == "觀望":
+                            if latest['RSI'] > 70:
+                                display_signal = "⚠️ 留意 (RSI 超買)"
+                            elif latest['RSI'] < 30:
+                                display_signal = "👀 留意 (RSI 超賣)"
+                        
+                        # 篩選條件：只要 display_signal 唔係「觀望」就上榜
+                        if display_signal != "觀望":
                             results.append({
                                 "股票代碼": t,
                                 "最新股價": round(float(latest['Close']), 2),
-                                "訊號": signal,
+                                "訊號": display_signal,
                                 "RSI": round(float(latest['RSI']), 2)
                             })
                 except Exception:
