@@ -180,7 +180,16 @@ with tab2:
                             signal = "🟢 買入 (黃金交叉)"
                         elif prev['MA_Short'] >= prev['MA_Long'] and latest['MA_Short'] < latest['MA_Long']:
                             signal = "🔴 賣出 (死亡交叉)"
-                        
+                   
+                        # --- 加入以下呢段新邏輯 ---
+                    display_signal = signal
+                    if signal == "觀望":
+                        if latest['RSI'] > 70:
+                            display_signal = "⚠️ 留意 (RSI 超買)"
+                        elif latest['RSI'] < 30:
+                            display_signal = "👀 留意 (RSI 超賣)"
+                    # -----------------------
+
                         # 篩選條件：有交叉訊號，或 RSI 極端
                         if signal != "觀望" or latest['RSI'] < 30 or latest['RSI'] > 70:
                             results.append({
