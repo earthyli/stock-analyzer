@@ -14,43 +14,31 @@ st.set_page_config(page_title="AI 股票訊號分析工具", layout="wide")
 st.title("📈 AI 智能股票技術分析工具 (專業指標版)")
 
 # ==========================================
-# 核心功能函數 (加入 MACD, BB, OBV)
+# 核心功能函數
 # ==========================================
 def calculate_indicators(df, short_w, long_w):
     if df.columns.nlevels > 1:
         df.columns = df.columns.get_level_values(0)
-    
-    # 1. 移動平均線 (MA)
     df['MA_Short'] = df['Close'].rolling(window=short_w).mean()
     df['MA_Long'] = df['Close'].rolling(window=long_w).mean()
-    
-    # 2. 相對強弱指數 (RSI)
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # 3. 保歷加通道 (Bollinger Bands - 20日標準)
     df['BB_Mid'] = df['Close'].rolling(window=20).mean()
     df['BB_Std'] = df['Close'].rolling(window=20).std()
     df['BB_Upper'] = df['BB_Mid'] + (df['BB_Std'] * 2)
     df['BB_Lower'] = df['BB_Mid'] - (df['BB_Std'] * 2)
-    
-    # 4. 平滑異同移動平均線 (MACD)
     df['EMA_12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = df['EMA_12'] - df['EMA_26']
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
-    
-    # 5. 能量潮指標 (OBV)
-    # 若今日收市升，Volume加；跌則減；平則不變
     conditions = [df['Close'] > df['Close'].shift(1), df['Close'] < df['Close'].shift(1)]
     choices = [1, -1]
     df['Direction'] = np.select(conditions, choices, default=0)
     df['OBV'] = (df['Volume'] * df['Direction']).cumsum()
-    
     return df
 
 @st.cache_data(ttl=86400)
@@ -114,11 +102,14 @@ with tab1:
                 latest = df.iloc[-1]
                 prev = df.iloc[-2]
                 
-                # 綜合訊號判斷
+                # 獲取最新數據日期
+                latest_date = df.index[-1].strftime('%Y-%m-%d')
+                
+                # 綜合訊號判斷與策略說明
                 signal = "🔵 觀望 (Neutral)"
                 signal_color = "#6c757d"
+                explanation = "目前未有明顯突破或極端情緒，建議耐心等待明確方向。"
                 
-                # MACD 與 MA 雙重確認
                 is_golden_cross = prev['MA_Short'] <= prev['MA_Long'] and latest['MA_Short'] > latest['MA_Long']
                 is_death_cross = prev['MA_Short'] >= prev['MA_Long'] and latest['MA_Short'] < latest['MA_Long']
                 
@@ -126,19 +117,26 @@ with tab1:
                     if latest['MACD_Hist'] > 0:
                         signal = "🔥 強力買入 (MA黃金交叉 + MACD動能支持)"
                         signal_color = "#198754"
+                        explanation = "📌 **策略：長線趨勢**\n大趨勢已向上突破，且資金動力強勁，勝率較高，適合建倉或加注。"
                     else:
                         signal = "🟢 買入 (MA黃金交叉，但需注意 MACD 未轉強)"
                         signal_color = "#28a745"
+                        explanation = "📌 **策略：長線趨勢**\n大趨勢初步轉好，但短期推動力未算強烈，可能會有反覆，建議分注買入。"
                         
                 elif is_death_cross:
                     signal = "🔴 賣出 (MA死亡交叉)"
                     signal_color = "#dc3545"
+                    explanation = "📌 **策略：風險控制**\n大趨勢已確認轉弱，下行風險增加，建議減倉或嚴格執行止蝕。"
                     
                 elif latest['Close'] <= latest['BB_Lower'] and latest['RSI'] < 35:
                     signal = "💎 撈底機會 (觸及保歷加通道底 + RSI超賣)"
                     signal_color = "#0dcaf0"
+                    explanation = "📌 **策略：短線博弈 (逆勢操作)**\n市場出現過度恐慌，短線極度超賣。適合小注博取技術性反彈，有賺即走，若跌穿前低位必須立即止蝕。"
                 
-                st.markdown(f"### {ticker} 當前綜合訊號: <span style='color:{signal_color}; font-weight:bold;'>{signal}</span>", unsafe_allow_html=True)
+                # 顯示標題、日期、訊號及解說
+                st.markdown(f"### {ticker} 當前綜合訊號 (數據日期: {latest_date})")
+                st.markdown(f"<span style='color:{signal_color}; font-weight:bold; font-size:22px;'>{signal}</span>", unsafe_allow_html=True)
+                st.info(explanation)
                 
                 # 繪製 4 層 Plotly 專業圖表
                 fig = make_subplots(rows=4, cols=1, shared_xaxes=True, 
@@ -146,25 +144,21 @@ with tab1:
                                     row_heights=[0.4, 0.2, 0.2, 0.2],
                                     subplot_titles=("股價與保歷加通道", "MACD 動能", "RSI", "OBV 資金流向"))
                 
-                # Row 1: 股價 + MA + Bollinger Bands
                 fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name='收市價', line=dict(color='#1f77b4', width=2)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Short'], name=f'{ma_short_window}MA', line=dict(color='#ff7f0e', width=1.5)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MA_Long'], name=f'{ma_long_window}MA', line=dict(color='#2ca02c', width=1.5)), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'], name='BB 頂部', line=dict(color='rgba(150,150,150,0.5)', width=1, dash='dot')), row=1, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'], name='BB 底部', line=dict(color='rgba(150,150,150,0.5)', width=1, dash='dot'), fill='tonexty', fillcolor='rgba(200,200,200,0.1)'), row=1, col=1)
                 
-                # Row 2: MACD
                 macd_colors = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
                 fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], name='MACD 柱', marker_color=macd_colors), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD'], name='MACD', line=dict(color='blue', width=1)), row=2, col=1)
                 fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], name='Signal', line=dict(color='orange', width=1)), row=2, col=1)
                 
-                # Row 3: RSI
                 fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='#9467bd', width=1.5)), row=3, col=1)
                 fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
                 fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
                 
-                # Row 4: OBV
                 fig.add_trace(go.Scatter(x=df.index, y=df['OBV'], name='OBV', line=dict(color='#e377c2', width=2)), row=4, col=1)
                 
                 fig.update_layout(height=800, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
@@ -207,30 +201,46 @@ with tab2:
                         df = calculate_indicators(df, ma_short_window, ma_long_window)
                         latest = df.iloc[-1]
                         prev = df.iloc[-2]
+                        latest_date = df.index[-1].strftime('%Y-%m-%d')
                         
                         signal = "觀望"
+                        strategy_type = ""
+                        advice = ""
                         
-                        # 1. 雙重突破策略 (MA交叉 + MACD支持)
                         if prev['MA_Short'] <= prev['MA_Long'] and latest['MA_Short'] > latest['MA_Long']:
-                            signal = "🔥 強力買入 (MA+MACD)" if latest['MACD_Hist'] > 0 else "🟢 買入 (MA)"
+                            if latest['MACD_Hist'] > 0:
+                                signal = "🔥 強力買入"
+                                strategy_type = "📈 長線趨勢"
+                                advice = "動能與趨勢俱佳，適合建倉"
+                            else:
+                                signal = "🟢 買入"
+                                strategy_type = "📈 長線趨勢"
+                                advice = "趨勢轉好但動能稍弱，宜分注買入"
                         elif prev['MA_Short'] >= prev['MA_Long'] and latest['MA_Short'] < latest['MA_Long']:
-                            signal = "🔴 賣出 (MA交叉)"
+                            signal = "🔴 賣出"
+                            strategy_type = "📉 風險控制"
+                            advice = "大勢轉弱，建議減倉或止蝕"
                             
-                        # 2. 撈底反彈策略 (BB底 + RSI超賣)
                         if signal == "觀望" and latest['Close'] <= latest['BB_Lower'] and latest['RSI'] < 35:
-                            signal = "💎 撈底 (觸及BB底+超賣)"
+                            signal = "💎 撈底"
+                            strategy_type = "⚡ 短線博弈"
+                            advice = "超賣極端狀態，博反彈，嚴設止蝕"
                             
-                        # 3. 風險預警 (BB頂 + RSI超買)
                         if signal == "觀望" and latest['Close'] >= latest['BB_Upper'] and latest['RSI'] > 70:
-                            signal = "⚠️ 風險 (觸及BB頂+超買)"
+                            signal = "⚠️ 風險"
+                            strategy_type = "⚠️ 風險控制"
+                            advice = "短期升幅急，留意回調，準備食糊"
                         
                         if signal != "觀望":
                             results.append({
                                 "股票代碼": t,
+                                "數據日期": latest_date,
                                 "最新股價": round(float(latest['Close']), 2),
+                                "策略分類": strategy_type,
                                 "訊號": signal,
                                 "MACD 動能": "正向 🔼" if latest['MACD_Hist'] > 0 else "負向 🔽",
-                                "RSI": round(float(latest['RSI']), 2)
+                                "RSI": round(float(latest['RSI']), 2),
+                                "操作建議": advice
                             })
                 except Exception:
                     pass
