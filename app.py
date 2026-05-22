@@ -6,13 +6,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import io
 import requests
-import google.generativeai as genai
 
 # ==========================================
 # 網頁基本設定
 # ==========================================
 st.set_page_config(page_title="AI 股票訊號分析工具", layout="wide")
-st.title("📈 AI 智能股票技術分析工具 (專業指標版)")
+st.title("📈 智能股票技術分析工具 (專業指標版)")
 
 # ==========================================
 # 核心功能函數
@@ -44,7 +43,6 @@ def calculate_indicators(df, short_w, long_w):
 
 @st.cache_data(ttl=86400)
 def get_sp500_mapping():
-    """抓取 S&P 500 並回傳 {代碼: 公司名稱} 字典"""
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
@@ -58,7 +56,6 @@ def get_sp500_mapping():
 
 @st.cache_data(ttl=86400)
 def get_hsi_mapping():
-    """抓取 中文版 Wikipedia 恒生指數，回傳 {代碼: 中文公司名稱} 字典"""
     url = 'https://zh.wikipedia.org/wiki/%E6%81%92%E7%94%9F%E6%8C%87%E6%95%B8'
     headers = {'User-Agent': 'Mozilla/5.0'}
     try:
@@ -128,7 +125,6 @@ with tab1:
                 prev = df.iloc[-2]
                 latest_date = df.index[-1].strftime('%Y-%m-%d')
                 
-                # 嘗試即時獲取公司名稱
                 try:
                     stock_name = yf.Ticker(ticker).info.get('shortName', '')
                     title_display = f"{ticker} {stock_name}" if stock_name else ticker
@@ -225,11 +221,9 @@ with tab2:
             status_text = st.empty()
             
             for i, t in enumerate(tickers):
-                # 獲取公司名稱邏輯
                 comp_name = ticker_name_map.get(t, "")
                 if not comp_name:
                     try:
-                        # 只為自訂名單即時抓取名稱，避免拖慢全網掃描速度
                         comp_name = yf.Ticker(t).info.get('shortName', 'N/A')
                     except:
                         comp_name = "N/A"
@@ -293,12 +287,8 @@ with tab2:
             
             if results:
                 st.success(f"發現 {len(results)} 隻符合高勝率策略的股票！")
-                # 重新整理 DataFrame 顯示順序
                 df_results = pd.DataFrame(results)
                 cols = ["股票代碼", "公司名稱", "最新股價", "訊號", "策略分類", "MACD 動能", "RSI", "操作建議", "數據日期"]
                 st.dataframe(df_results[cols], use_container_width=True)
-                
-                # --- 若日後想加返 AI 報告，將代碼貼喺呢個位置 ---
-                
             else:
                 st.info("暫時未發現有強烈買賣訊號的股票。")
