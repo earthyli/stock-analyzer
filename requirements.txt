@@ -4,3 +4,4 @@ pandas
 plotly
 lxml
 numpy
+html5lib

@@ -10,7 +10,7 @@ import requests
 # ==========================================
 # 網頁基本設定
 # ==========================================
-st.set_page_config(page_title="AI 股票訊號分析工具", layout="wide")
+st.set_page_config(page_title="智能股票技術分析工具", layout="wide")
 st.title("📈 智能股票技術分析工具 (專業指標版)")
 
 # ==========================================
@@ -52,7 +52,13 @@ def get_sp500_mapping():
         names = table['Security']
         return dict(zip(tickers, names))
     except:
-        return {"AAPL": "Apple Inc.", "MSFT": "Microsoft"}
+        # 增強版美股備用名單 (Top 巨頭)
+        return {
+            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "GOOGL": "Alphabet", 
+            "AMZN": "Amazon", "META": "Meta", "TSLA": "Tesla", "BRK-B": "Berkshire Hathaway",
+            "JPM": "JPMorgan", "V": "Visa", "JNJ": "Johnson & Johnson", "WMT": "Walmart",
+            "PG": "Procter & Gamble", "MA": "Mastercard", "HD": "Home Depot", "CVX": "Chevron"
+        }
 
 @st.cache_data(ttl=86400)
 def get_hsi_mapping():
@@ -81,7 +87,18 @@ def get_hsi_mapping():
                     return mapping
     except Exception:
         pass
-    return {"0700.HK": "騰訊控股", "9988.HK": "阿里巴巴-W", "0005.HK": "匯豐控股", "0388.HK": "香港交易所"}
+    # 增強版港股備用名單 (Top 30+ 藍籌)
+    return {
+        "0700.HK": "騰訊控股", "9988.HK": "阿里巴巴-W", "3690.HK": "美團-W", "0005.HK": "匯豐控股", 
+        "1299.HK": "友邦保險", "0941.HK": "中國移動", "0388.HK": "香港交易所", "0939.HK": "建設銀行", 
+        "1398.HK": "工商銀行", "3988.HK": "中國銀行", "2318.HK": "中國平安", "0883.HK": "中國海洋石油", 
+        "1810.HK": "小米集團-W", "9618.HK": "京東集團-SW", "9999.HK": "網易-S", "0011.HK": "恒生銀行", 
+        "0002.HK": "中電控股", "0003.HK": "香港中華煤氣", "0016.HK": "新鴻基地產", "0066.HK": "港鐵公司", 
+        "0175.HK": "吉利汽車", "0288.HK": "萬洲國際", "0386.HK": "中國石油化工", "0857.HK": "中國石油", 
+        "0868.HK": "信義玻璃", "1109.HK": "華潤置地", "1928.HK": "金沙中國", "2020.HK": "安踏體育", 
+        "2269.HK": "藥明生物", "2388.HK": "中銀香港", "2628.HK": "中國人壽", "0992.HK": "聯想集團",
+        "1044.HK": "恒安國際", "0241.HK": "阿里健康", "1093.HK": "石藥集團", "1177.HK": "中國生物製藥"
+    }
 
 # ==========================================
 # 側邊欄設定
